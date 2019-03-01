@@ -24,10 +24,62 @@ void ofApp::update() {
 
 void ofApp::draw() {
 	ofSetColor(255);
-	cam.draw(0, 0);
-	
-	int w = 250, h = 12;
 	ofPushStyle();
+
+	ofPushStyle();	
+	ofNoFill();
+
+	ofPolyline faceOutline = tracker.getImageFeature(ofxFaceTracker::FACE_OUTLINE);
+	auto boundingBox = faceOutline.getBoundingBox();
+	boundingBox.standardize();
+	
+	// Approximating the bounding box of the entire face as a being 1/3 taller than the bounding box provided 
+	// by the FACE_OUTLINE image feature that enscribes the top of the eyebrows and the bottom of the chin
+	float extra = boundingBox.height * 0.5f;
+	float expandedHeight = boundingBox.height + extra;
+	float expandedY = boundingBox.y - (extra);
+	ofRectangle expandedBound = ofRectangle(boundingBox.x, expandedY, boundingBox.width, expandedHeight);
+	
+	ofEnableSmoothing();
+	ofSetLineWidth(5.0f);
+	ofSetColor(ofColor::white);
+
+	ofTexture tex = cam.getTexture();
+	ofPixels pix;
+	tex.readToPixels(pix);
+
+	// We want the circle to be slightly larger than the max dimension (which should be height) 
+	// of the bounding box that contains the rough approximation of the face + hairline
+	float maxDimension = MAX(expandedHeight, boundingBox.width);
+	float circleDiameter = maxDimension * 1.5f;
+	float circleRadius = circleDiameter / 2.0f;
+	ofVec2f circleCenter = expandedBound.getCenter();
+
+	// todo: figure out if these values could/should ever be a different value than 
+	// the initial values passed as parameters into cam.setup(w, h);
+	int pixelWidth = pix.getWidth();
+	int pixelHeight = pix.getHeight();
+
+	for (int i = 0; i < pixelWidth; i++) {
+		for (int j = 0; j < pixelHeight; j++) {
+			if (ofDist(i, j, circleCenter.x, circleCenter.y) < circleRadius) {
+				ofColor color = pix.getColor(i,j);
+				// https://en.wikipedia.org/wiki/Grayscale#Luma_coding_big_gameas
+				ofColor grayscale = ofColor((0.3 * color.r) + (0.59 * color.g) + (0.11 * color.b));
+				pix.setColor(i, j, grayscale);
+			}
+		}
+	}
+
+	tex.loadData(pix);
+	tex.draw(0,0);
+
+	ofDrawCircle(circleCenter, circleRadius);
+	
+	ofPopStyle();
+
+	int w = 250, h = 12;
+	
 	ofPushMatrix();
 	ofTranslate(5, 10);
 
@@ -45,31 +97,6 @@ void ofApp::draw() {
 	ofTranslate(0, h + 5);
 
 	ofPopMatrix();
-	ofPopStyle();
-
-	ofPushStyle();	
-	ofNoFill();
-
-	ofPolyline faceOutline = tracker.getImageFeature(ofxFaceTracker::FACE_OUTLINE);
-	auto boundingBox = faceOutline.getBoundingBox();
-	boundingBox.standardize();
-	
-	// Approximating the bounding box of the entire face as a being 1/3 taller than the bounding box provided 
-	// by the FACE_OUTLINE image feature that enscribes the top of the eyebrows and the bottom of the chin
-	float extra = boundingBox.height * 0.5f;
-	float expandedHeight = boundingBox.height + extra;
-	float expandedY = boundingBox.y - (extra);
-	ofRectangle expandedBound = ofRectangle(boundingBox.x, expandedY, boundingBox.width, expandedHeight);
-	
-	ofSetLineWidth(5.0f);
-	ofSetColor(ofColor::white);
-	
-	// We want the circle to be slightly larger than the max dimension (which should be height) 
-	// of the bounding box that contains the rough approximation of the face + hairline
-	float maxDimension = MAX(expandedHeight, boundingBox.width);
-	float circleDiameter = maxDimension * 1.5f;
-	ofDrawCircle(expandedBound.getCenter(), circleDiameter/2.0f);
-	
 	ofPopStyle();
 }
 
