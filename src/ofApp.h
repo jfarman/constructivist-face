@@ -17,4 +17,7 @@ public:
 protected:
 	string getDirectionString();
 	string getMouthStateString();
+	ofColor orangeRed;
+	ofColor gradientArray[255];
+	void calculateGradient();
 };

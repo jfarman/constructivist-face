@@ -3,6 +3,9 @@
 using namespace ofxCv;
 using namespace cv;
 
+ofColor orangeRed;
+ofColor gradientArray[255];
+
 void ofApp::setup() {
 	ofSetVerticalSync(true);
 	cam.setup(640, 480);
@@ -11,6 +14,9 @@ void ofApp::setup() {
 	tracker.setRescale(.5);
 
 	classifier.load("expressions");
+
+	orangeRed = ofColor(255, 70, 47);
+	calculateGradient();
 }
 
 void ofApp::update() {
@@ -62,26 +68,29 @@ void ofApp::draw() {
 
 	for (int i = 0; i < pixelWidth; i++) {
 		for (int j = 0; j < pixelHeight; j++) {
-			if (ofDist(i, j, circleCenter.x, circleCenter.y) < circleRadius) {
-				ofColor color = pix.getColor(i,j);
-				// https://en.wikipedia.org/wiki/Grayscale#Luma_coding_big_gameas
-				ofColor grayscale = ofColor((0.3 * color.r) + (0.59 * color.g) + (0.11 * color.b));
-				pix.setColor(i, j, grayscale);
-			}
+			ofColor color = pix.getColor(i, j);
+			// https://en.wikipedia.org/wiki/Grayscale#Luma_coding_big_gameas
+			float luminance = (0.3 * color.r) + (0.59 * color.g) + (0.11 * color.b);
+			// Pixels within the head-enscapsulating circle are grayscale, 
+			// those outside of the circle are monochromotatic orange-red
+			bool isPixelEncircled = ofDist(i, j, circleCenter.x, circleCenter.y) < circleRadius;
+			ofColor pixelColor = (isPixelEncircled) ? ofColor(luminance) : gradientArray[(int)luminance];
+			pix.setColor(i, j, pixelColor);
 		}
 	}
 
 	tex.loadData(pix);
 	tex.draw(0,0);
 
+	ofSetCircleResolution(100);
 	ofDrawCircle(circleCenter, circleRadius);
 	
 	ofPopStyle();
-
-	int w = 250, h = 12;
 	
 	ofPushMatrix();
 	ofTranslate(5, 10);
+
+	int w = 250, h = 12;
 
 	// Display information about pose (mouth open, direction facing)
 	ofSetColor(ofColor::black);
@@ -125,4 +134,17 @@ string ofApp::getMouthStateString()
 	bool mouthOpen = classifier.getDescription(primary) == "open mouth";
 	string mouthState = mouthOpen ? "open" : "closed";
 	return "mouth state = " + mouthState;
+}
+
+// Adapted from http://blog.72lions.com/blog/2015/7/7/duotone-in-js
+void ofApp::calculateGradient()
+{
+	// Creates a gradient of 255 colors between orange-red and black
+	for (int i = 0; i < 255; i++) {
+		float ratio = (float)i / 255.0f;
+		float rA = floor(orangeRed.r * ratio);
+		float gA = floor(orangeRed.g * ratio);
+		float bA = floor(orangeRed.b * ratio);		
+		gradientArray[i] = ofColor(rA, gA, bA);
+	}
 }
