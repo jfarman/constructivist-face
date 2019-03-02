@@ -19,5 +19,6 @@ protected:
 	ofColor orangeRed;
 	ofColor gradientArray[255];
 	void calculateGradient();
-	void drawCallout();
+	void drawCallout(ofPoint circleCenter, float circleRadius);
+	ofPoint getIntersection(ofPoint pointA, ofPoint pointB, ofPoint circleCenter, float circleRadius);
 };

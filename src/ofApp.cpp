@@ -59,7 +59,7 @@ void ofApp::draw() {
 	float maxDimension = MAX(expandedHeight, boundingBox.width);
 	float circleDiameter = maxDimension * 1.5f;
 	float circleRadius = circleDiameter / 2.0f;
-	ofVec2f circleCenter = expandedBound.getCenter();
+	ofPoint circleCenter = expandedBound.getCenter();
 
 	// todo: figure out if these values could/should ever be a different value than 
 	// the initial values passed as parameters into cam.setup(w, h);
@@ -89,7 +89,7 @@ void ofApp::draw() {
 	int primary = classifier.getPrimaryExpression();
 	bool mouthOpen = classifier.getDescription(primary) == "open mouth";
 	
-	if (mouthOpen) drawCallout();
+	if (mouthOpen) drawCallout(circleCenter, circleRadius);
 	
 	ofPopStyle();
 	
@@ -118,19 +118,19 @@ void ofApp::draw() {
 
 void ofApp::keyPressed(int key) {}
 
-void ofApp::drawCallout() {
+void ofApp::drawCallout(ofPoint circleCenter, float circleRadius) {
 	// Use nose bridge feature to approximate face tilt
 	ofPolyline noseBridge = tracker.getImageFeature(ofxFaceTracker::NOSE_BRIDGE);
 	// If there are no points associated with the nose bridge feature, just return
 	if (noseBridge.size() == 0) return;
 		
 	ofPoint firstPoint = noseBridge[0];
-	ofPoint lastPoint = noseBridge[noseBridge.size() - 1];
+	ofPoint mouthCenter = tracker.getImageFeature(ofxFaceTracker::INNER_MOUTH).getCentroid2D();
+	ofPoint lastPoint = mouthCenter;
+
 	float slope = (lastPoint.x - firstPoint.x) / (lastPoint.y - firstPoint.y);
 	float intercept = lastPoint.x - (slope*lastPoint.y);
 
-	ofPolyline innerMouth = tracker.getImageFeature(ofxFaceTracker::INNER_MOUTH);
-	ofPoint mouthCenter = innerMouth.getCentroid2D();
 	ofPoint endPoint = ofPoint(slope * 640 + intercept, 640); // todo: get width
 
 	float halfVertex = 45.0 / 2.0f;
@@ -144,26 +144,67 @@ void ofApp::drawCallout() {
 	double addRadians = ofDegToRad(angle + halfVertex);
 	double subRadians = ofDegToRad(angle - halfVertex);
 
+	float offsetMouthY = mouthCenter.y - 5; // todo: figure out correct offset value
+	ofPoint offsetMouthCenter = ofPoint(slope * offsetMouthY + intercept, offsetMouthY);
+
+	// Adapted from https://math.stackexchange.com/q/1101779
 	ofPoint vertexA = ofPoint(mouthCenter.x - (triangleLength * sin(addRadians)), mouthCenter.y - (triangleLength * cos(addRadians)));
 	ofPoint vertexB = ofPoint(mouthCenter.x - (triangleLength * sin(subRadians)), mouthCenter.y - (triangleLength * cos(subRadians)));
+	ofPoint offsetVertexA = ofPoint(offsetMouthCenter.x - (triangleLength * sin(addRadians)), offsetMouthCenter.y - (triangleLength * cos(addRadians)));
+	ofPoint offsetVertexB = ofPoint(offsetMouthCenter.x - (triangleLength * sin(subRadians)), offsetMouthCenter.y - (triangleLength * cos(subRadians)));
 
-	ofSetLineWidth(3.0f);
+	ofFill();
+	ofSetColor(orangeRed);
+	ofDrawTriangle(mouthCenter.x, mouthCenter.y, vertexA.x, vertexA.y, vertexB.x, vertexB.y);
+
+	ofSetLineWidth(5.0f);
 	ofSetColor(ofColor::white);
 
-	ofPolyline calloutLineA = ofPolyline();
-	calloutLineA.addVertex(mouthCenter);
-	calloutLineA.addVertex(vertexA);
-	calloutLineA.draw();
+	ofPolyline offsetCalloutLineA = ofPolyline();
+	ofPoint circleIntersectionA = getIntersection(offsetMouthCenter, offsetVertexA, circleCenter, circleRadius);
+	offsetCalloutLineA.addVertex(circleIntersectionA);
+	offsetCalloutLineA.addVertex(offsetVertexA);
+	offsetCalloutLineA.draw();
 
-	ofPolyline calloutLineB = ofPolyline();
-	calloutLineB.addVertex(mouthCenter);
-	calloutLineB.addVertex(vertexB);
-	calloutLineB.draw();
+	ofPolyline offsetCalloutLineB = ofPolyline();
+	ofPoint circleIntersectionB = getIntersection(offsetMouthCenter, offsetVertexB, circleCenter, circleRadius);
+	offsetCalloutLineB.addVertex(circleIntersectionB);
+	offsetCalloutLineB.addVertex(offsetVertexB);
+	offsetCalloutLineB.draw();
+}
 
-	// todo: remove (drawing inner mouth location for debugging purposes only)
-	ofFill();
-	ofSetColor(ofColor::black);
-	ofDrawCircle(innerMouth.getCentroid2D(), 1 * tracker.getScale());
+// Adapted from https://stackoverflow.com/a/1088058
+ofPoint ofApp::getIntersection(ofPoint pointA, ofPoint pointB, ofPoint circleCenter, float circleRadius) {
+	// compute the euclidean distance between A and B
+	float distance = ofDist(pointA.x, pointA.y, pointB.x, pointB.y);
+
+	// compute the direction vector from A to B
+	ofVec2f directionVector = ofVec2f((pointB.x - pointA.x) / distance, (pointB.y - pointA.y) / distance);
+
+	// compute the distance between the points A and E, where
+	// E is the point of AB closest the circle center (Cx, Cy)
+	float intersectionDistance = directionVector.x * (circleCenter.x - pointA.x) + directionVector.y * (circleCenter.y - pointA.y);
+
+	// compute the coordinates of the point E
+	ofPoint closestToCenterPoint = ofVec2f(intersectionDistance * directionVector.x + pointA.x, intersectionDistance * directionVector.y + pointA.y);
+
+	// compute the euclidean distance between E and C
+	float euclideanDistance = ofDist(circleCenter.x, circleCenter.y, closestToCenterPoint.x, closestToCenterPoint.y);
+
+	// test if the line intersects the circle
+	if (euclideanDistance < circleRadius)
+	{
+		// compute distance from t to circle intersection point
+		double radiusSquared = (double)circleRadius*circleRadius;
+		float dt = sqrt(radiusSquared - euclideanDistance*euclideanDistance);
+
+		// compute intersection point (don't need the point at intersectionDistance - dt
+		// because we don't need the intersection at the top of the circle)	
+		float Gx = (intersectionDistance + dt)*directionVector.x + pointA.x;
+		float Gy = (intersectionDistance + dt)*directionVector.y + pointA.y;
+		
+		return ofPoint(Gx, Gy);
+	}
 }
 
 string ofApp::getDirectionString()
