@@ -84,6 +84,12 @@ void ofApp::draw() {
 
 	ofSetCircleResolution(100);
 	ofDrawCircle(circleCenter, circleRadius);
+
+	// todo: get mouth state from ofxFaceTracker jaw openness gesture
+	int primary = classifier.getPrimaryExpression();
+	bool mouthOpen = classifier.getDescription(primary) == "open mouth";
+	
+	if (mouthOpen) drawCallout();
 	
 	ofPopStyle();
 	
@@ -96,7 +102,8 @@ void ofApp::draw() {
 	ofSetColor(ofColor::black);
 	ofDrawRectangle(0, 0, w, h);
 	ofSetColor(ofColor::white);
-	ofDrawBitmapString(getMouthStateString(), 5, 9);
+	string suffix = (mouthOpen) ? "open" : "closed";
+	ofDrawBitmapString("mouth state = " + suffix, 5, 9);
 	ofTranslate(0, h + 5);
 
 	ofSetColor(ofColor::black);
@@ -110,6 +117,54 @@ void ofApp::draw() {
 }
 
 void ofApp::keyPressed(int key) {}
+
+void ofApp::drawCallout() {
+	// Use nose bridge feature to approximate face tilt
+	ofPolyline noseBridge = tracker.getImageFeature(ofxFaceTracker::NOSE_BRIDGE);
+	// If there are no points associated with the nose bridge feature, just return
+	if (noseBridge.size() == 0) return;
+		
+	ofPoint firstPoint = noseBridge[0];
+	ofPoint lastPoint = noseBridge[noseBridge.size() - 1];
+	float slope = (lastPoint.x - firstPoint.x) / (lastPoint.y - firstPoint.y);
+	float intercept = lastPoint.x - (slope*lastPoint.y);
+
+	ofPolyline innerMouth = tracker.getImageFeature(ofxFaceTracker::INNER_MOUTH);
+	ofPoint mouthCenter = innerMouth.getCentroid2D();
+	ofPoint endPoint = ofPoint(slope * 640 + intercept, 640); // todo: get width
+
+	float halfVertex = 45.0 / 2.0f;
+	float triangleHeight = ofDist(mouthCenter.x, mouthCenter.y, endPoint.x, endPoint.y);
+	float triangleLength = triangleHeight / cos(ofDegToRad(halfVertex));
+
+	ofVec2f directionVector = ofVec2f(lastPoint.x - firstPoint.x, lastPoint.y - firstPoint.y);
+	ofVec2f normalized = directionVector.getNormalized();
+	int angle = normalized.angle(ofVec2f(0, -1));
+
+	double addRadians = ofDegToRad(angle + halfVertex);
+	double subRadians = ofDegToRad(angle - halfVertex);
+
+	ofPoint vertexA = ofPoint(mouthCenter.x - (triangleLength * sin(addRadians)), mouthCenter.y - (triangleLength * cos(addRadians)));
+	ofPoint vertexB = ofPoint(mouthCenter.x - (triangleLength * sin(subRadians)), mouthCenter.y - (triangleLength * cos(subRadians)));
+
+	ofSetLineWidth(3.0f);
+	ofSetColor(ofColor::white);
+
+	ofPolyline calloutLineA = ofPolyline();
+	calloutLineA.addVertex(mouthCenter);
+	calloutLineA.addVertex(vertexA);
+	calloutLineA.draw();
+
+	ofPolyline calloutLineB = ofPolyline();
+	calloutLineB.addVertex(mouthCenter);
+	calloutLineB.addVertex(vertexB);
+	calloutLineB.draw();
+
+	// todo: remove (drawing inner mouth location for debugging purposes only)
+	ofFill();
+	ofSetColor(ofColor::black);
+	ofDrawCircle(innerMouth.getCentroid2D(), 1 * tracker.getScale());
+}
 
 string ofApp::getDirectionString()
 {
@@ -126,14 +181,6 @@ string ofApp::getDirectionString()
 		default: str += "none";
 	}	
 	return str;
-}
-
-string ofApp::getMouthStateString()
-{
-	int primary = classifier.getPrimaryExpression();
-	bool mouthOpen = classifier.getDescription(primary) == "open mouth";
-	string mouthState = mouthOpen ? "open" : "closed";
-	return "mouth state = " + mouthState;
 }
 
 // Adapted from http://blog.72lions.com/blog/2015/7/7/duotone-in-js
