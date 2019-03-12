@@ -9,6 +9,9 @@ ofColor gradientArray[255];
 
 const float cameraWidth = 640;
 const float cameraHeight = 480;
+const float textAnimationSpacing = -0.5f;
+
+const float MOUTH_OPEN_THRESHOLD = 18.0f;;
 
 void ofApp::setup() {
 	ofSetVerticalSync(true);
@@ -29,7 +32,7 @@ void ofApp::setup() {
 	updateString(displayString);
 
 	leadingTextTimer = 0;
-	trailingTextTimer = 0;
+	trailingTextTimer = textAnimationSpacing;
 
 	shouldDrawLeadingText = true;
 	shouldDrawTrailingText = false;
@@ -180,8 +183,6 @@ void ofApp::draw() {
 	tex.loadData(pix);
 	tex.draw(0, 0);
 
-	string mouthState = "mouth not detected";
-
 	if (tracker.getFound()) { // Only draw callouts and frames if face is detected
 		ofPushStyle();
 
@@ -198,35 +199,14 @@ void ofApp::draw() {
 
 		ofPopStyle();
 
-		// todo: get mouth state from ofxFaceTracker jaw openness gesture
-		int primary = classifier.getPrimaryExpression();
-		bool mouthOpen = classifier.getDescription(primary) == "open mouth";
-		string suffix = (mouthOpen) ? "open" : "closed";
-		mouthState = "mouth state = " + suffix;
-
-		if (true) 
-			drawCallout(circleCenter, circleRadius);
+		float jawOpenness = tracker.getGesture(ofxFaceTracker::JAW_OPENNESS);
+		float mouthHeight = tracker.getGesture(ofxFaceTracker::MOUTH_HEIGHT);
+		// Found a good threshold for mouth openness through trial and error 
+		bool mouthOpen = jawOpenness / mouthHeight < MOUTH_OPEN_THRESHOLD;
+		if (mouthOpen) drawCallout(circleCenter, circleRadius);
 	}
 	
 	ofPopStyle();
-	
-	ofPushMatrix();
-	ofTranslate(5, 10);
-
-	int w = 250, h = 12;
-
-	// Display information about pose (mouth open, direction facing)
-	ofSetColor(ofColor::black);
-	ofDrawRectangle(0, 0, w, h);
-	ofSetColor(ofColor::white);
-	ofDrawBitmapString(mouthState, 5, 9);
-	ofTranslate(0, h + 5);
-
-	ofSetColor(ofColor::black);
-	ofDrawRectangle(0, 0, w, h);
-	ofSetColor(ofColor::white);
-	ofDrawBitmapString(getDirectionString(), 5, 9);
-	ofTranslate(0, h + 5);
 
 	ofPopMatrix();
 	ofPopStyle();
@@ -417,6 +397,7 @@ void ofApp::drawText(bool isLeadingText) {
 	if (isLeadingText) leadingTextTimer += ofGetLastFrameTime();
 	else trailingTextTimer += ofGetLastFrameTime();
 	float timer = (isLeadingText) ? leadingTextTimer : trailingTextTimer;
+	if (timer < 0) return;
 	float animationTime = timer / 5;
 
 	float distance = currentTriangleHeight;
@@ -452,19 +433,16 @@ void ofApp::drawText(bool isLeadingText) {
 			if (allCharsVisible) {
 				if (charIndex == 0) {
 					if (isLeadingText) {
-						leadingTextTimer = 0;
+						leadingTextTimer = textAnimationSpacing;
 						shouldDrawLeadingText = false;
 					}
 					else {
-						trailingTextTimer = 0;
+						trailingTextTimer = textAnimationSpacing;
 						shouldDrawTrailingText = false;
 					}
 				}
 				if (charIndex == numChars - 1) {
-					if (isLeadingText) {
-						shouldDrawTrailingText = true;
-						//ofLog(OF_LOG_NOTICE, "shouldStartTrailingText = true");
-					}
+					if (isLeadingText) shouldDrawTrailingText = true;
 					else shouldDrawLeadingText = true;
 				}
 			}
