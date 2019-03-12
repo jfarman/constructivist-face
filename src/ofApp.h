@@ -18,15 +18,20 @@ public:
 protected:
 	string getDirectionString();
 	ofColor orangeRed;
-	ofColor gradientArray[255];
+	ofColor orangeGradientArray[255];
+
 	void calculateGradient();
 	void drawCallout(ofPoint circleCenter, float circleRadius);
-	void drawSideFrames(ofRectangle leftFrame, ofRectangle rightFrame);
 	ofPoint getIntersection(ofPoint pointA, ofPoint pointB, ofPoint circleCenter, float circleRadius);
 	bool isWithinTriangle(ofPoint s, ofPoint a, ofPoint b, ofPoint c);
-	
-	//void ofxQuadWarp(ofTexture tex, ofPoint lt, ofPoint rt, ofPoint rb, ofPoint lb, int rows, int cols);
-	//void drawText();
+
+	static ofPoint ofxLerp(ofPoint start, ofPoint end, float amt);
+	static int ofxIndex(float x, float y, float w);
+	static bool sortByX(const ofPoint &a, const ofPoint &b);
+	static bool sortByY(const ofPoint &a, const ofPoint &b);
+
+	void ofxQuadWarp(ofTexture tex, ofPoint lt, ofPoint rt, ofPoint rb, ofPoint lb, int rows, int cols);
+	void drawText(bool isLeadingText);
 
 	ofPoint mouthCenter;
 
@@ -34,6 +39,7 @@ protected:
 	ofPolyline lineB;
 	ofPolyline offsetLineA;
 	ofPolyline offsetLineB;
+	ofPolyline bisectingLine;
 
 	ofPoint startPoint;
 	ofPoint endPoint;
@@ -46,4 +52,15 @@ protected:
 
 	float fakeMaxPoint;
 	ofPoint offsetMouthCenter;
+
+	ofTrueTypeFont font;
+	vector <ofFbo> charsAsFBOs;
+	string displayString;
+	void updateString(string newString);
+
+	float leadingTextTimer;
+	float trailingTextTimer;
+	
+	bool shouldDrawLeadingText;
+	bool shouldDrawTrailingText;
 };

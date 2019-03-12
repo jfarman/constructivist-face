@@ -4,11 +4,15 @@ using namespace ofxCv;
 using namespace cv;
 
 ofColor orangeRed;
+ofColor darkGray;
 ofColor gradientArray[255];
+
+const float cameraWidth = 640;
+const float cameraHeight = 480;
 
 void ofApp::setup() {
 	ofSetVerticalSync(true);
-	cam.setup(640, 480);
+	cam.setup(cameraWidth, cameraHeight);
 	
 	tracker.setup();
 	tracker.setRescale(.5);
@@ -16,7 +20,19 @@ void ofApp::setup() {
 	classifier.load("expressions");
 
 	orangeRed = ofColor(255, 70, 47);
+	darkGray = ofColor(49, 48, 44);
 	calculateGradient();
+
+	font.load("kremlin.ttf", 120, true, true, true);
+
+	displayString = "HELLO";
+	updateString(displayString);
+
+	leadingTextTimer = 0;
+	trailingTextTimer = 0;
+
+	shouldDrawLeadingText = true;
+	shouldDrawTrailingText = false;
 }
 
 //--------------------------------------------------------------
@@ -43,6 +59,7 @@ void ofApp::update() {
 	// of the bounding box that contains the rough approximation of the face + hairline
 	float maxDimension = MAX(expandedHeight, boundingBox.width);
 	float circleDiameter = maxDimension * 1.5f;
+
 	circleRadius = circleDiameter / 2.0f;
 	circleCenter = expandedBound.getCenter();
 
@@ -51,16 +68,21 @@ void ofApp::update() {
 	// If there are no points associated with the nose bridge feature, just return
 	if (noseBridge.size() == 0) return;
 
-	ofPoint originPoint = noseBridge[0];
+	ofPoint noseStartPoint = noseBridge[0];
+	ofPoint noseEndPoint = noseBridge[1];
 	mouthCenter = tracker.getImageFeature(ofxFaceTracker::INNER_MOUTH).getCentroid2D();
 
-	lineSlope = (mouthCenter.x - originPoint.x) / (mouthCenter.y - originPoint.y);
+	lineSlope = (noseEndPoint.x - noseStartPoint.x) / (noseEndPoint.y - noseStartPoint.y);
 	lineIntercept = mouthCenter.x - (lineSlope*mouthCenter.y);
 
-	fakeMaxPoint = 380;
+	float maxYDimension = cameraHeight + 50; // Add some padding just to make sure text runs fully off screen
 
-	ofPoint endPoint = ofPoint(lineSlope * 380 + lineIntercept, 380); // todo: get width + make this accurate
+	ofPoint endPoint = ofPoint(lineSlope * maxYDimension + lineIntercept, maxYDimension);
 	startPoint = mouthCenter;
+
+	bisectingLine.clear();
+	bisectingLine.addVertex(startPoint.x, startPoint.y);
+	bisectingLine.addVertex(endPoint.x, endPoint.y);
 
 	float halfVertex = 45.0 / 2.0f;
 	currentTriangleHeight = ofDist(startPoint.x, startPoint.y, endPoint.x, endPoint.y);
@@ -101,17 +123,14 @@ void ofApp::update() {
 	offsetLineB.addVertex(circleIntersectionB);
 	offsetLineB.addVertex(offsetVertexB);
 
-	// todo: add line extensions back in
+	// todo: figure out more elegant way of extending line lengths
+	ofVec2f directionVectorA = ofVec2f(vertexA.x - startPoint.x, vertexA.y - startPoint.y);
+	ofPoint extendoA = vertexA + directionVectorA * maxYDimension;
+	lineA.addVertex(extendoA);
 
-	//ofVec2f directionVectorA = ofVec2f(vertexA.x - startPoint.x, vertexA.y - startPoint.y);
-	////ofVec2f normalizedVectorA = directionVector.getNormalized();
-	//ofPoint extendoA = vertexA + directionVectorA * maxDimension;
-	//lineA.addVertex(extendoA);
-
-	//ofVec2f directionVectorB = ofVec2f(vertexB.x - startPoint.x, vertexB.y - startPoint.y);
-	////ofVec2f normalizedVectorA = directionVector.getNormalized();
-	//ofPoint extendoB = vertexB + directionVectorB * maxDimension;
-	//lineB.addVertex(extendoB);
+	ofVec2f directionVectorB = ofVec2f(vertexB.x - startPoint.x, vertexB.y - startPoint.y);
+	ofPoint extendoB = vertexB + directionVectorB * maxYDimension;
+	lineB.addVertex(extendoB);
 }
 
 
@@ -123,33 +142,21 @@ void ofApp::draw() {
 	ofNoFill();
 	
 	ofEnableSmoothing();
-	ofSetLineWidth(5.0f);
-	ofSetColor(ofColor::white);
 
 	ofTexture tex = cam.getTexture();
 	ofPixels pix;
 	tex.readToPixels(pix);
 
-	// todo: get height and width
-	float height = 480 - circleCenter.y;
-	float width = 640 - (circleCenter.x + circleRadius);
-	ofRectangle leftRectangle = ofRectangle(0, circleCenter.y, circleCenter.x - circleRadius, height);
-	ofRectangle rightRectangle = ofRectangle(circleCenter.x + circleRadius, circleCenter.y, width, height);
-
 	ofPoint leftVertexA = ofPoint(0, 0);
-	ofPoint leftVertexB = ofPoint(leftRectangle.getTopRight().x, leftRectangle.getTopRight().y);
+	ofPoint leftVertexB = ofPoint(circleCenter.x - circleRadius, circleCenter.y);
 	ofPoint leftVertexC = ofPoint(0, 480);
-	ofDrawTriangle(leftVertexA.x, leftVertexA.y, leftVertexB.x, leftVertexB.y, leftVertexC.x, leftVertexC.y);
 	
 	ofPoint rightVertexA = ofPoint(640, 0);
-	ofPoint rightVertexB = ofPoint(rightRectangle.getTopLeft().x, rightRectangle.getTopLeft().y);
+	ofPoint rightVertexB = ofPoint(circleCenter.x + circleRadius, circleCenter.y);
 	ofPoint rightVertexC = ofPoint(640, 480);
-	ofDrawTriangle(rightVertexA.x, rightVertexA.y, rightVertexB.x, rightVertexB.y, rightVertexC.x, rightVertexC.y);
 
-	// todo: figure out if these values could/should ever be a different value than 
-	// the initial values passed as parameters into cam.setup(w, h);
-	int pixelWidth = pix.getWidth();
-	int pixelHeight = pix.getHeight();
+	int pixelWidth = cameraWidth;
+	int pixelHeight = cameraHeight;
 
 	for (int i = 0; i < pixelWidth; i++) {
 		for (int j = 0; j < pixelHeight; j++) {
@@ -157,16 +164,12 @@ void ofApp::draw() {
 			// https://en.wikipedia.org/wiki/Grayscale#Luma_coding_big_gameas
 			float luminance = (0.3 * color.r) + (0.59 * color.g) + (0.11 * color.b);
 			// Default color for pixels is monochromotatic orange-red gradient
-			ofColor pixelColor = gradientArray[(int)luminance];
+			ofColor pixelColor = orangeGradientArray[(int)luminance];
 			if (tracker.getFound()) {
 				// Pixels within the head-enscapsulating circle and the frames are grayscale
 				bool isPixelEncircled = ofDist(i, j, circleCenter.x, circleCenter.y) < circleRadius;
-				bool isInFrameHeight = (j > circleCenter.y and j < 480);
+				bool isInFrameHeight = (j > circleCenter.y and j < cameraWidth);
 				if (isPixelEncircled) pixelColor = ofColor(luminance);
-				//else if (isInFrameHeight) { // shortcut for checking y of both left and right frames
-				//	if (i > leftRectangle.getLeft() and i < leftRectangle.getRight())  pixelColor = ofColor(luminance);
-				//	else if (i > rightRectangle.getLeft() and i < rightRectangle.getRight()) pixelColor = ofColor(luminance);
-				//}
 				else if (isWithinTriangle(ofPoint(i,j), leftVertexA, leftVertexB, leftVertexC)) pixelColor = ofColor(luminance);
 				else if (isWithinTriangle(ofPoint(i, j), rightVertexA, rightVertexB, rightVertexC)) pixelColor = ofColor(luminance);
 			}
@@ -175,15 +178,25 @@ void ofApp::draw() {
 	}
 
 	tex.loadData(pix);
-	tex.draw(0,0);
+	tex.draw(0, 0);
 
 	string mouthState = "mouth not detected";
 
 	if (tracker.getFound()) { // Only draw callouts and frames if face is detected
-		drawSideFrames(leftRectangle, rightRectangle);
+		ofPushStyle();
+
+		ofNoFill();
+		ofSetLineWidth(5.0f);
+		ofSetColor(ofColor::white);
+
+		// Draw triangular frames on either side of the face circle
+		ofDrawTriangle(leftVertexA.x, leftVertexA.y, leftVertexB.x, leftVertexB.y, leftVertexC.x, leftVertexC.y);
+		ofDrawTriangle(rightVertexA.x, rightVertexA.y, rightVertexB.x, rightVertexB.y, rightVertexC.x, rightVertexC.y);
 
 		ofSetCircleResolution(100);
 		ofDrawCircle(circleCenter, circleRadius);
+
+		ofPopStyle();
 
 		// todo: get mouth state from ofxFaceTracker jaw openness gesture
 		int primary = classifier.getPrimaryExpression();
@@ -217,31 +230,9 @@ void ofApp::draw() {
 
 	ofPopMatrix();
 	ofPopStyle();
-
-	//todo: remove (debugging only)
-	ofSetColor(ofColor::magenta);
-	ofPolyline fakeMaxPointLine;
-	fakeMaxPointLine.addVertex(0, fakeMaxPoint);
-	fakeMaxPointLine.addVertex(pixelWidth, fakeMaxPoint);
-	fakeMaxPointLine.draw();
 }
 
 void ofApp::keyPressed(int key) {}
-
-void ofApp::drawSideFrames(ofRectangle leftFrame, ofRectangle rightFrame) {
-	ofPushStyle();
-
-	ofNoFill();
-	ofSetLineWidth(5.0f);
-	ofSetColor(ofColor::white);
-
-	//ofRectangle leftRectangle = ofRectangle(0, circleCenter.y, circleCenter.x - circleRadius, height);
-	//ofRectangle rightRectangle = ofRectangle(circleCenter.x + circleRadius, circleCenter.y, width, height);
-	ofDrawTriangle(0, 0, leftFrame.getTopRight().x, leftFrame.getTopRight().y, 0, 480);
-	ofDrawTriangle(640, 0, rightFrame.getTopLeft().x, leftFrame.getTopLeft().y, 640, 480);
-
-	ofPopStyle();
-}
 
 void ofApp::drawCallout(ofPoint circleCenter, float circleRadius) {
 	ofFill();
@@ -255,10 +246,9 @@ void ofApp::drawCallout(ofPoint circleCenter, float circleRadius) {
 	offsetLineA.draw();
 	offsetLineB.draw();
 
-	ofSetColor(ofColor::magenta);
-	ofDrawCircle(offsetLineA[0], 5);
-	ofDrawCircle(offsetLineB[0], 5);
-	ofDrawCircle(offsetMouthCenter, 5);
+	// Draw leading text, followed by trailing text
+	if (shouldDrawLeadingText) drawText(true);
+	if (shouldDrawTrailingText) drawText(false);
 }
 
 // Adapted from https://stackoverflow.com/a/1088058
@@ -321,7 +311,7 @@ void ofApp::calculateGradient()
 		float rA = floor(orangeRed.r * ratio);
 		float gA = floor(orangeRed.g * ratio);
 		float bA = floor(orangeRed.b * ratio);		
-		gradientArray[i] = ofColor(rA, gA, bA);
+		orangeGradientArray[i] = ofColor(rA, gA, bA);
 	}
 }
 
@@ -338,4 +328,192 @@ bool ofApp::isWithinTriangle(ofPoint s, ofPoint a, ofPoint b, ofPoint c)
 	if ((c.x - b.x)*(s.y - b.y) - (c.y - b.y)*(s.x - b.x) > 0 != s_ab) return false;
 
 	return true;
+}
+
+void ofApp::updateString(string newString) {
+	charsAsFBOs.clear();
+	for (char & c : newString)
+	{
+		string charString = string(1, c);
+		ofRectangle boundingBox = font.getStringBoundingBox(charString, 0, 0, true);
+		if (boundingBox.width > 0 && boundingBox.height > 0) {
+
+			ofPushStyle();
+			ofPushMatrix();
+			ofFbo fbo1;
+			fbo1.allocate(boundingBox.width, boundingBox.height);
+			fbo1.begin();
+			ofFill();
+			ofSetColor(ofColor::white);
+			font.drawString(charString, 0, boundingBox.height);
+			fbo1.end();
+			ofTexture tex1 = fbo1.getTextureReference();
+			charsAsFBOs.push_back(fbo1);
+			ofPopMatrix();
+			ofPopStyle();
+		}
+	}
+}
+
+// Adapted from https://sites.google.com/site/ofauckland/examples/quad-warping
+void ofApp::ofxQuadWarp(ofTexture tex, ofPoint a, ofPoint b, ofPoint c, ofPoint d, int rows, int cols)
+{
+	// The quad warping approach below requires top left, bottom left, etc points, but the parameters are
+	// 4 arbitrary points. The sorting strategy below is not ideal but this is just for a proof of concept.
+	
+	vector<ofPoint> pointsByX{ a, b, c, d };
+	vector<ofPoint> pointsByY{ a, b, c, d };
+	ofPoint lt, rt, rb, lb;
+
+	ofPoint leftwardPoint = pointsByX[0];
+	for (int i = 0; i < 4; i++) {
+		if (leftwardPoint == pointsByY[i]) {
+			lt = (i < 2) ? pointsByY[i] : pointsByX[1];
+			lb = (i < 2) ? pointsByX[1] : pointsByY[i];
+		}
+	}
+	ofPoint rightwardPoint = pointsByX[2];
+	for (int i = 0; i < 4; i++) {
+		if (rightwardPoint == pointsByY[i]) {
+			rb = (i < 2) ? pointsByY[i] : pointsByX[3];
+			rt = (i < 2) ? pointsByX[3] : pointsByY[i];
+		}
+	}
+
+	float tw = tex.getWidth();
+	float th = tex.getHeight();
+
+	ofMesh mesh;
+
+	for (int x = 0; x <= cols; x++) {
+		float f = float(x) / cols;
+		ofPoint vTop(ofxLerp(lt, rt, f));
+		ofPoint vBottom(ofxLerp(lb, rb, f));
+		ofPoint tTop(ofxLerp(ofPoint(0, 0), ofPoint(tw, 0), f));
+		ofPoint tBottom(ofxLerp(ofPoint(0, th), ofPoint(tw, th), f));
+
+		for (int y = 0; y <= rows; y++) {
+			float f = float(y) / rows;
+			ofPoint v = ofxLerp(vTop, vBottom, f);
+			mesh.addVertex(v);
+			mesh.addTexCoord((ofVec2f)ofxLerp(tTop, tBottom, f));
+		}
+	}
+
+	for (float y = 0; y < rows; y++) {
+		for (float x = 0; x < cols; x++) {
+			mesh.addTriangle(ofxIndex(x, y, cols + 1), ofxIndex(x + 1, y, cols + 1), ofxIndex(x, y + 1, cols + 1));
+			mesh.addTriangle(ofxIndex(x + 1, y, cols + 1), ofxIndex(x + 1, y + 1, cols + 1), ofxIndex(x, y + 1, cols + 1));
+		}
+	}
+
+	tex.bind();
+	mesh.draw();
+	tex.unbind();
+}
+
+void ofApp::drawText(bool isLeadingText) {
+
+	if (isLeadingText) leadingTextTimer += ofGetLastFrameTime();
+	else trailingTextTimer += ofGetLastFrameTime();
+	float timer = (isLeadingText) ? leadingTextTimer : trailingTextTimer;
+	float animationTime = timer / 5;
+
+	float distance = currentTriangleHeight;
+	float unit = distance / (6 * charsAsFBOs.size()); // arbitrary
+	float easing = 1 + sin(PI / 2 * animationTime - PI / 2);
+	float arbitraryStartLerp = 0.0f + (animationTime);
+	ofPoint currentStartPosition = (ofPoint)bisectingLine.getPointAtIndexInterpolated(arbitraryStartLerp);
+	float lerpUnit = 0.2;
+
+	int numChars = MIN((int)timer + 1, charsAsFBOs.size());
+	bool allCharsVisible = numChars == charsAsFBOs.size();
+
+	for (int i = 0; i < numChars; i++)
+	{
+		int charIndex = charsAsFBOs.size() - (i + 1);
+		float lerpIndexStart = arbitraryStartLerp - (i * lerpUnit);
+
+		ofPoint interpolatedLineAPointStart = (ofPoint)lineA.getPointAtIndexInterpolated(lerpIndexStart);
+		ofPoint interpolatedLineBPointStart = (ofPoint)lineB.getPointAtIndexInterpolated(lerpIndexStart);
+
+		if (lerpIndexStart > 1) {
+			float overhang = lerpIndexStart - 1;
+			float length = (overhang)* distance;
+			ofPoint vertexA = (ofPoint)lineA[1];
+			float extendoDistanceA = vertexA.distance((ofPoint)lineA[2]);
+			float newLerp = length / extendoDistanceA;
+
+			interpolatedLineAPointStart = (ofPoint)lineA.getPointAtIndexInterpolated(1 + newLerp);
+			interpolatedLineBPointStart = (ofPoint)lineB.getPointAtIndexInterpolated(1 + newLerp);
+
+			lerpIndexStart = 1 + newLerp;
+
+			if (allCharsVisible) {
+				if (charIndex == 0) {
+					if (isLeadingText) {
+						leadingTextTimer = 0;
+						shouldDrawLeadingText = false;
+					}
+					else {
+						trailingTextTimer = 0;
+						shouldDrawTrailingText = false;
+					}
+				}
+				if (charIndex == numChars - 1) {
+					if (isLeadingText) {
+						shouldDrawTrailingText = true;
+						//ofLog(OF_LOG_NOTICE, "shouldStartTrailingText = true");
+					}
+					else shouldDrawLeadingText = true;
+				}
+			}
+		}
+
+		float lerpIndexEnd = lerpIndexStart + (lerpUnit * 5 / 6); // arbitrary: using 5/6th of available space to space characters
+
+		ofPoint interpolatedLineAPointEnd = (ofPoint)lineA.getPointAtIndexInterpolated(lerpIndexEnd);
+		ofPoint interpolatedLineBPointEnd = (ofPoint)lineB.getPointAtIndexInterpolated(lerpIndexEnd);
+
+		if (lerpIndexEnd > 1) {
+			float overhang = lerpIndexEnd - 1;
+			float length = (overhang)* distance;
+			ofPoint vertexA = (ofPoint)lineA[1];
+			float extendoDistanceA = vertexA.distance((ofPoint)lineA[2]);
+			float newLerp = length / extendoDistanceA;
+
+			interpolatedLineAPointEnd = (ofPoint)lineA.getPointAtIndexInterpolated(1 + newLerp);
+			interpolatedLineBPointEnd = (ofPoint)lineB.getPointAtIndexInterpolated(1 + newLerp);
+
+			lerpIndexEnd = 1 + newLerp;
+		}
+
+		ofSetColor(darkGray);
+
+		ofTexture tex1 = charsAsFBOs[charIndex].getTextureReference();
+		tex1.getTextureData().bFlipTexture = true;
+		ofPoint lt = ofPoint(interpolatedLineAPointStart);
+		ofPoint rt = ofPoint(interpolatedLineBPointStart);
+		ofPoint rb = ofPoint(interpolatedLineAPointEnd);
+		ofPoint lb = ofPoint(interpolatedLineBPointEnd);
+		ofxQuadWarp(tex1, lt, rt, rb, lb, 40, 40);
+	}
+
+	ofPopStyle();
+}
+
+ofPoint ofApp::ofxLerp(ofPoint start, ofPoint end, float amt) {
+	return start + amt * (end - start);
+}
+
+int ofApp::ofxIndex(float x, float y, float w) {
+	return y * w + x;
+}
+
+bool ofApp::sortByX(const ofPoint &a, const ofPoint &b) {
+	return a.x < b.x;
+}
+
+bool ofApp::sortByY(const ofPoint &a, const ofPoint &b) {
+	return a.y < b.y;
 }

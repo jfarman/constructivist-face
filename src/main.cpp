@@ -2,6 +2,9 @@
 
 
 int main() {
-    ofSetupOpenGL(640, 480, OF_WINDOW);
-    return ofRunApp(std::make_shared<ofApp>());
+	ofGLFWWindowSettings settings;
+	settings.resizable = false;
+	settings.setSize(640, 480);
+	ofCreateWindow(settings);
+	return ofRunApp(new ofApp);
 }
